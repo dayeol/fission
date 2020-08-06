@@ -545,7 +545,8 @@ func (fh *functionHandler) getServiceEntry() (serviceUrl *url.URL, serviceUrlFro
 				fh.logger.Info("assigning service url for function",
 					zap.String("url", u.String()),
 					zap.String("function_name", fnMeta.Name))
-				fh.fmap.assign(fnMeta, u)
+				fh.logger.Info("never use cache")
+				// fh.fmap.assign(fnMeta, u)
 			} else {
 				u, err = fh.getServiceEntryFromCache()
 				if err != nil {

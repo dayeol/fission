@@ -111,7 +111,7 @@ func MakeGenericPoolManager(
 		fsCache:                fscache.MakeFunctionServiceCache(gpmLogger),
 		instanceId:             instanceId,
 		requestChannel:         make(chan *request),
-		defaultIdlePodReapTime: 2 * time.Minute,
+		defaultIdlePodReapTime: 10 * time.Second,
 		fetcherConfig:          fetcherConfig,
 	}
 
@@ -171,6 +171,13 @@ func (gpm *GenericPoolManager) GetFuncSvcFromCache(fn *fv1.Function) (*fscache.F
 
 func (gpm *GenericPoolManager) DeleteFuncSvcFromCache(fsvc *fscache.FuncSvc) {
 	gpm.fsCache.DeleteEntry(fsvc)
+
+	go func() {
+		for _, kubeObj := range fsvc.KubernetesObjects {
+			gpm.logger.Info("terminating zombie pod", zap.String("pod", fsvc.Name))
+			gpm.kubernetesClient.CoreV1().Pods(kubeObj.Namespace).Delete(kubeObj.Name, nil)
+		}
+	}()
 }
 
 func (gpm *GenericPoolManager) TapService(svcHost string) error {

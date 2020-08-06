@@ -98,16 +98,16 @@ func (executor *Executor) getServiceForFunction(fn *fv1.Function) (string, error
 
 	fsvc, err := et.GetFuncSvcFromCache(fn)
 	if err == nil {
-		if et.IsValid(fsvc) {
-			// Cached, return svc address
-			return fsvc.Address, nil
-		} else {
-			executor.logger.Debug("deleting cache entry for invalid address",
-				zap.String("function_name", fn.ObjectMeta.Name),
-				zap.String("function_namespace", fn.ObjectMeta.Namespace),
-				zap.String("address", fsvc.Address))
-			et.DeleteFuncSvcFromCache(fsvc)
-		}
+		//if et.IsValid(fsvc) {
+		  // Cached, return svc address
+		//  return fsvc.Address, nil
+		//} else {
+			executor.logger.Info("deleting cache entry for invalid address",
+			  zap.String("function_name", fn.ObjectMeta.Name),
+			  zap.String("function_namespace", fn.ObjectMeta.Namespace),
+			  zap.String("address", fsvc.Address))
+		  et.DeleteFuncSvcFromCache(fsvc)
+		//}
 	}
 
 	respChan := make(chan *createFuncServiceResponse)
