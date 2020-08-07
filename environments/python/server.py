@@ -7,10 +7,43 @@ import sys
 from flask import Flask, request, abort, g
 from gevent.pywsgi import WSGIServer
 import bjoern
+from traceback import print_exc
+from werkzeug.wsgi import ClosingIterator
 
+class AfterResponse:
+    def __init__(self, application=None):
+        self.functions = list()
+        if application:
+            self.init_app(application)
+
+    def __call__(self, function):
+        self.functions.append(function)
+
+    def init_app(self, application):
+        application.after_response = self
+        application.wsgi_app = AfterResponseMiddleware(application.wsgi_app, self)
+
+    def flush(self):
+        while self.functions:
+            try:
+                self.functions.pop()()
+            except Exception:
+                print_exc()
+
+class AfterResponseMiddleware:
+    def __init__(self, application, after_response_ext):
+        self.application = application
+        self.after_response_ext = after_response_ext
+
+    def __call__(self, environ, after_response):
+        iterator = self.application(environ, after_response)
+        try:
+            return ClosingIterator(iterator, [self.after_response_ext.flush])
+        except Exception:
+            print_exc()
+            return iterator
 
 IS_PY2 = (sys.version_info.major == 2)
-
 
 def import_src(path):
     if IS_PY2:
@@ -20,8 +53,12 @@ def import_src(path):
         # the imp module is deprecated in Python3. use importlib instead.
         return importlib.machinery.SourceFileLoader('mod', path).load_module()
 
-
 class FuncApp(Flask):
+    def exit_if_served(self):
+        if self.served == 0:
+            self.logger.info("served once, exitting")
+            exit(0)
+
     def __init__(self, name, loglevel=logging.DEBUG):
         super(FuncApp, self).__init__(name)
 
@@ -29,7 +66,7 @@ class FuncApp(Flask):
         self.userfunc = None
         self.root = logging.getLogger()
         self.ch = logging.StreamHandler(sys.stdout)
-
+        self.served = 1
         #
         # Logging setup.  TODO: Loglevel hard-coded for now. We could allow
         # functions/routes to override this somehow; or we could create
@@ -51,11 +88,29 @@ class FuncApp(Flask):
             self.userfunc = import_src('/userfunc/user').main
             return ""
 
+        #@self.after_response
+        #def check_if_served():
+        #    if self.served == 0:
+        #        self.logger.info("served once, exitting")
+        #        exit(0)
+
+        #@self.before_first_request
         @self.route('/v2/specialize', methods=['POST'])
         def loadv2():
-            body = request.get_json()
-            filepath = body['filepath']
-            handler = body['functionName']
+            AfterResponse(self)
+
+            @self.after_response
+            def after_first_response():
+                self.logger.info("exiting after getting one response")
+                exit(0)
+
+            filepath = "./user.py"
+            handler = "main"
+            # no longer does anything
+            #body = request.get_json()
+            #filepath = body['filepath']
+            #handler = body['functionName']
+
             self.logger.info('/v2/specialize called with  filepath = "{}"   handler = "{}"'.format(filepath, handler))
 
             # handler looks like `path.to.module.function`
@@ -71,7 +126,7 @@ class FuncApp(Flask):
                 moduleName = parts[0]
                 funcName = parts[1]
             self.logger.debug('moduleName = "{}"    funcName = "{}"'.format(moduleName, funcName))
-            
+
             # check whether the destination is a directory or a file
             if os.path.isdir(filepath):
                 # add package directory path into module search path
@@ -99,9 +154,11 @@ class FuncApp(Flask):
         @self.route('/', methods=['GET', 'POST', 'PUT', 'HEAD', 'OPTIONS',
                                   'DELETE'])
         def f():
+            self.served -= 1
             if self.userfunc is None:
                 print("Generic container: no requests supported")
                 abort(500)
+
             #
             # Customizing the request context
             #
@@ -111,13 +168,12 @@ class FuncApp(Flask):
             #
             # And the user func can then access that
             # (after doing a"from flask import g").
-
+            #return "updated!\n"
             return self.userfunc()
 
 
 app = FuncApp(__name__, logging.DEBUG)
 
-#
 # TODO: this starts the built-in server, which isn't the most
 # efficient.  We should use something better.
 #
@@ -127,4 +183,5 @@ if os.environ.get("WSGI_FRAMEWORK") == "GEVENT":
     svc.serve_forever()
 else:
     app.logger.info("Starting bjoern based server")
+    app.logger.info("Updated Version (Revision 1)")
     bjoern.run(app, '0.0.0.0', 8888, reuse_port=True)

@@ -1,10 +1,10 @@
-FROM alpine
+FROM ubuntu:18.04
 
 WORKDIR /app
 
-RUN apk add --update gcc && \
-    apk upgrade --no-cache && \
-    apk add --no-cache python3 python3-dev build-base libev-dev libffi-dev bash py-pip && \
+RUN apt-get update && apt-get install -y build-essential && \
+    apt-get install -y python3 python3-dev libev-dev libffi-dev bash \
+		python3-pip && \
     pip3 install --upgrade pip && \
     rm -r /root/.cache
 
@@ -15,3 +15,4 @@ COPY . /app
 
 ENTRYPOINT ["python3"]
 CMD ["server.py"]
+
